@@ -5,7 +5,7 @@ from torch_geometric.nn import MLP
 from . import HEPTAttention
 
 from .model_utils.mask_utils import FullMask
-from .model_utils.hash_utils import pad_to_multiple, get_bins, quantile_binning
+from .model_utils.hash_utils import get_regions, quantile_partition
 from .model_utils.window_utils import discretize_coords, FlattenedWindowMapping, get_pe_func
 from torch_geometric.utils import to_dense_batch
 from torch_geometric.nn.pool import global_add_pool, global_mean_pool
@@ -13,45 +13,68 @@ from torch.utils.checkpoint import checkpoint
 from einops import rearrange
 
 
+def bit_shift(base, shift_idx):
+    max_base = base.max(dim=1, keepdim=True).values
+    num_bits = torch.ceil(torch.log2(max_base + 1)).long()
+    return (shift_idx << num_bits) | base
 
-def prepare_input(x, coords, batch, helper_funcs):
+
+def pad_and_unpad(batch, block_size, region_indices, raw_sizes):
+    padded_sizes = ((raw_sizes + block_size - 1) // block_size) * block_size
+    pad_sizes = padded_sizes - raw_sizes
+
+    pad_cumsum = padded_sizes.cumsum(0)
+    pad_seq = torch.arange(pad_cumsum[-1], device=batch.device)
+    unpad_seq = torch.ones(pad_cumsum[-1], device=batch.device).bool()
+
+    sorted_region_indices = region_indices.argsort()
+    for i in range(len(raw_sizes)):
+        idx_to_fill = pad_cumsum[i] - block_size - pad_sizes[i] + torch.arange(pad_sizes[i], device=batch.device)
+        if i >= 1:
+            pad_seq[pad_cumsum[i - 1] :] -= pad_sizes[i - 1]
+            idx_to_fill -= pad_sizes[:i].sum()
+        pad_seq[pad_cumsum[i] - pad_sizes[i] : pad_cumsum[i]] = sorted_region_indices[idx_to_fill]
+        unpad_seq[pad_cumsum[i] - pad_sizes[i] : pad_cumsum[i]] = False
+    return pad_seq, unpad_seq
+
+
+def prepare_input(x, coords, batch, helper_params):
     kwargs = {}
-
-    #assert batch.max() == 0
-    key_padding_mask = None
-    mask = None
-    kwargs["key_padding_mask"] = key_padding_mask
-    kwargs["coords"] = coords
-
-
+    regions = rearrange(helper_params["regions"], "c a h -> a (c h)")
     with torch.no_grad():
-        block_size = helper_funcs["block_size"]
-        kwargs["raw_size"] = x.shape[0]
-        x = pad_to_multiple(x, block_size, dims=0)
-        kwargs["coords"] = pad_to_multiple(kwargs["coords"], block_size, dims=0, value=float("inf"))
-        sorted_eta_idx = torch.argsort(kwargs["coords"][..., 0], dim=-1)
-        sorted_phi_idx = torch.argsort(kwargs["coords"][..., 1], dim=-1)
-        bins = helper_funcs["bins"]
-        bins_h = rearrange(bins, "c a h -> a (c h)")
-        bin_indices_eta = quantile_binning(sorted_eta_idx, bins_h[0][:, None])
-        bin_indices_phi = quantile_binning(sorted_phi_idx, bins_h[1][:, None])
-        kwargs["bin_indices"] = [bin_indices_eta, bin_indices_phi]
-        kwargs["bins_h"] = bins_h
-        kwargs["coords"][kwargs["raw_size"]:] = 0.0
+        block_size, num_heads = helper_params["block_size"], helper_params["num_heads"]
+        graph_sizes = batch.bincount()
+        graph_size_cumsum = graph_sizes.cumsum(0)
 
+        region_indices_eta, region_indices_phi = [], []
+        for graph_idx in range(len(graph_size_cumsum)):
+            start_idx = 0 if graph_idx == 0 else graph_size_cumsum[graph_idx - 1]
+            end_idx = graph_size_cumsum[graph_idx]
+            sorted_eta_idx = torch.argsort(coords[start_idx:end_idx, 0], dim=-1)
+            sorted_phi_idx = torch.argsort(coords[start_idx:end_idx, 1], dim=-1)
 
-    return x, mask, kwargs
+            region_indices_eta.append(quantile_partition(sorted_eta_idx, regions[0][:, None]))
+            region_indices_phi.append(quantile_partition(sorted_phi_idx, regions[1][:, None]))
+        region_indices_eta = torch.cat(region_indices_eta, dim=-1)
+        region_indices_phi = torch.cat(region_indices_phi, dim=-1)
+
+        combined_shifts = bit_shift(region_indices_eta.long(), region_indices_phi.long())
+        combined_shifts = bit_shift(combined_shifts, batch[None])
+        combined_shifts = rearrange(combined_shifts, "(c h) n -> c h n", h=num_heads)
+
+        pad_seq, unpad_seq = pad_and_unpad(batch, block_size, combined_shifts[0, 0], graph_sizes)
+        x = x[pad_seq]
+        kwargs["combined_shifts"] = combined_shifts[..., pad_seq]
+        kwargs["coords"] = coords[pad_seq]
+    return x, kwargs, unpad_seq
 
 
 class Transformer(nn.Module):
-    def __init__(self, in_dim, coords_dim, **kwargs):
+    def __init__(self, in_dim, coords_dim, dropout=0.0, **kwargs):
         super().__init__()
-
         self.n_layers = kwargs["n_layers"]
         self.h_dim = kwargs["h_dim"]
-        self.use_ckpt = kwargs.get("use_ckpt", False)
-
-
+        self.num_classes = 1
 
         self.feat_encoder = nn.Sequential(
             nn.Linear(in_dim, self.h_dim),
@@ -63,8 +86,9 @@ class Transformer(nn.Module):
         for _ in range(self.n_layers):
             self.attns.append(Attn(coords_dim, **kwargs))
 
-        self.dropout = nn.Dropout(0.)
+        self.dropout = nn.Dropout(dropout)
         self.W = nn.Linear(self.h_dim * (self.n_layers + 1), int(self.h_dim // 2), bias=False)
+
         self.mlp_out = MLP(
             in_channels=int(self.h_dim // 2),
             out_channels=int(self.h_dim // 2),
@@ -75,57 +99,35 @@ class Transformer(nn.Module):
             norm_kwargs={"mode": "graph"},
         )
 
-        self.helper_funcs = {}
+        self.helper_params = {}
 
-        self.helper_funcs["block_size"] = kwargs["block_size"]
-        self.bins = nn.Parameter(get_bins(kwargs["num_buckets"], kwargs["n_hashes"], kwargs["num_heads"]), requires_grad=False)
-        self.helper_funcs["bins"] = self.bins
+        self.helper_params["block_size"] = kwargs["block_size"]
+        self.regions = nn.Parameter(
+            get_regions(kwargs["num_regions"], kwargs["n_hashes"], kwargs["num_heads"]), requires_grad=False
+        )
+        self.helper_params["regions"] = self.regions
+        self.helper_params["num_heads"] = kwargs["num_heads"]
 
-        self.out_proj = nn.Linear(int(self.h_dim // 2), 1)
+        if self.num_classes:
+            self.out_proj = nn.Linear(int(self.h_dim // 2), self.num_classes)
 
-    def forward(self, data):
-        x, coords, batch = data.x, data.coords, data.batch
-        #print(data.y)
-        #print(x)
-        #print(coords)
-        #print()
-        x, mask, kwargs = prepare_input(x, coords, batch, self.helper_funcs)
-        #print(x)
-        #print()
+    def forward(self, x, coords, batch):
+        x, kwargs, unpad_seq = prepare_input(x, coords, batch, self.helper_params)
+
         encoded_x = self.feat_encoder(x)
-        #print(encoded_x)
-        #print()
         all_encoded_x = [encoded_x]
         for i in range(self.n_layers):
-
-            if self.use_ckpt:
-                encoded_x = checkpoint(self.attns[i], encoded_x, kwargs)
-            else:
-                encoded_x = self.attns[i](encoded_x, kwargs)
-                
+            encoded_x = self.attns[i](encoded_x, kwargs)
             all_encoded_x.append(encoded_x)
-
-        encoded_x = tanh(self.W(torch.cat(all_encoded_x, dim=-1)))
-        #print(encoded_x)
-        #print()
-        out = encoded_x + self.dropout(self.mlp_out(encoded_x))
-        #print(out)
-        #print(out-encoded_x)
-        #print()
-        if kwargs.get("raw_size", False):
-            out = out[:kwargs["raw_size"]]
-
-        if mask is not None:
-            out = out[mask]
         
-        out = global_mean_pool(out, batch)
-        #print(out)
-        #print()
-        out = self.out_proj(out)
-        #print(out)
-        #print()
-        #print(out.sigmoid())
-        #q
+        encoded_x = tanh(self.W(torch.cat(all_encoded_x, dim=-1)))
+        out = encoded_x + self.dropout(self.mlp_out(encoded_x))
+        
+        out = global_mean_pool(out[unpad_seq], batch)
+        
+        if self.num_classes:
+            out = self.out_proj(out)
+            
         return out
 
 
@@ -139,6 +141,7 @@ class Attn(nn.Module):
         self.w_k = nn.Linear(self.dim_per_head, self.dim_per_head * self.num_heads, bias=False)
         self.w_v = nn.Linear(self.dim_per_head, self.dim_per_head * self.num_heads, bias=False)
 
+        # +2 for data.pos
         self.attn = HEPTAttention(self.dim_per_head + coords_dim, **kwargs)
 
         self.dropout = nn.Dropout(0.1)
@@ -152,15 +155,11 @@ class Attn(nn.Module):
 
         # eta/phi from data.pos use the same weights as they are used to calc dR
         self.w_rpe = nn.Linear(kwargs["num_w_per_dist"] * (coords_dim - 1), self.num_heads * self.dim_per_head)
-        self.pe_func = get_pe_func(kwargs["pe_type"], coords_dim, kwargs)
 
     def forward(self, x, kwargs):
-        pe = kwargs["coords"] if self.pe_func is None else self.pe_func(kwargs["coords"])
- 
-        x_pe = x + pe if self.pe_func is not None else x
-        x_normed = self.norm1(x_pe)
+        x_normed = self.norm1(x)
         q, k, v = self.w_q(x_normed), self.w_k(x_normed), self.w_v(x_normed)
-        aggr_out = self.attn(q, k, v, pe=pe, w_rpe=self.w_rpe, **kwargs)
+        aggr_out = self.attn(q, k, v, pe=kwargs["coords"], w_rpe=self.w_rpe, **kwargs)
 
         x = x + self.dropout(aggr_out)
         ff_output = self.ff(self.norm2(x))

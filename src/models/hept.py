@@ -3,7 +3,7 @@ import torch.nn as nn
 from typing import List
 
 from einops import rearrange
-from .model_utils.hash_utils import lsh_clustering, batched_index_select, invert_permutation, E2LSH
+from .model_utils.hash_utils import lsh_mapping, batched_index_select, invert_permutation, E2LSH
 
 
 def sort_to_buckets(x, perm, bucketsz):
@@ -43,19 +43,6 @@ def prep_qk(query, key, w, coords):
     return q_hat, k_hat
 
 
-@torch.no_grad()
-def get_geo_shift(bins_h: List[List[int]], hash_shift, bin_indices):
-    bin_indices_eta, bin_indices_phi = bin_indices
-
-    q_hash_shift_eta = bin_indices_eta * hash_shift
-    k_hash_shift_eta = bin_indices_eta * hash_shift
-
-    q_hash_shift_phi = bin_indices_phi * hash_shift * (torch.ceil(bins_h[0][:, None]) + 1)
-    k_hash_shift_phi = bin_indices_phi * hash_shift * (torch.ceil(bins_h[0][:, None]) + 1)
-    res = torch.stack([q_hash_shift_phi + q_hash_shift_eta, k_hash_shift_phi + k_hash_shift_eta], dim=0)
-    return rearrange(res, "a (c h) n -> a c h n", c=3)
-
-
 class HEPTAttention(nn.Module):
     def __init__(self, hash_dim, **kwargs):
         super().__init__()
@@ -69,7 +56,6 @@ class HEPTAttention(nn.Module):
         self.e2lsh = E2LSH(n_hashes=self.n_hashes, n_heads=self.num_heads, dim=hash_dim)
 
     def forward(self, query, key, value, **kwargs):
-        # TODO: support batched inputs
         query = query.view(-1, self.num_heads, self.dim_per_head)
         key = key.view(-1, self.num_heads, self.dim_per_head)
         value = value.view(-1, self.num_heads, self.dim_per_head)
@@ -86,18 +72,12 @@ class HEPTAttention(nn.Module):
         q_hat = rearrange(q_hat, "n h d -> h n d")
         k_hat = rearrange(k_hat, "n h d -> h n d")
         value = rearrange(value, "n h d -> h n d")
-        q_hat[:, kwargs["raw_size"] :] = 0.0
-        k_hat[:, kwargs["raw_size"] :] = 0.0
-        value[:, kwargs["raw_size"] :] = 0.0
 
-        q_hashed, k_hashed, hash_shift = lsh_clustering(self.e2lsh, q_hat, k_hat, self.block_size, r=1)
-        q_hashed[..., kwargs["raw_size"]:] = float("inf")
-        k_hashed[..., kwargs["raw_size"]:] = float("inf")
+        q_hashed, k_hashed, hash_shift = lsh_mapping(self.e2lsh, q_hat, k_hat)
 
-        q_shifts, k_shifts = get_geo_shift(kwargs["bins_h"], hash_shift, kwargs["bin_indices"])
-
-        q_hashed = q_hashed + q_shifts
-        k_hashed = k_hashed + k_shifts
+        combined_shifts = kwargs["combined_shifts"] * hash_shift
+        q_hashed = q_hashed + combined_shifts
+        k_hashed = k_hashed + combined_shifts
 
         q_positions = q_hashed.argsort(dim=-1)
         k_positions = k_hashed.argsort(dim=-1)

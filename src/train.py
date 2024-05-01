@@ -44,76 +44,30 @@ class Tau3MuGNNs:
                 torch.nn.init.xavier_uniform_(l.weight)
         
     @torch.no_grad()
-    def eval_one_batch(self, batch):
+    def eval_one_batch(self, data):
         self.model.eval()
-        logits = []
+
+        data.to(self.device)
+        event_clf_logits = self.model(data.x, data.coords, data.batch)
+        y = data.y
         
-        batch_size = len(batch)
-        if batch_size == 1:
-            data = batch[0]
-            data.to(self.device)
-            event_clf_logits = self.model(data)
-            y = data.y
-            
-            loss, loss_dict = self.criterion(event_clf_logits.sigmoid(), y)
-            logits.append(event_clf_logits.data.cpu())
-        else:
-            assert batch_size > 0
-            
-            total_loss = 0
-            
-            for data in batch:
-                data.to(self.device)
-                event_clf_logits = self.model(data)
-                y = data.y
-                
-                loss, _t = self.criterion(event_clf_logits.sigmoid(), y)
-                total_loss += loss
-                logits.append(event_clf_logits.data.cpu())
-            
-            total_loss /= batch_size
-            loss_dict = {'total':total_loss.item(), 'focal':total_loss.item()}
-            
-        logits = torch.cat(logits)
-        return loss_dict, logits
+        loss, loss_dict = self.criterion(event_clf_logits.sigmoid(), y)
         
-    def train_one_batch(self, batch):
+        return loss_dict, event_clf_logits.data.cpu()
+        
+    def train_one_batch(self, data):
         self.model.train()
-        logits = []
         
-        batch_size = len(batch)
-        if batch_size == 1:
-            data = batch[0]
-            data.to(self.device)
-            event_clf_logits = self.model(data)
-            y = data.y
-            
-            loss, loss_dict = self.criterion(event_clf_logits.sigmoid(), y)
-            logits.append(event_clf_logits.data.cpu())
-            
-        else:
-            assert batch_size > 0
-            
-            total_loss = 0
-            
-            for data in batch:
-                data.to(self.device)
-                event_clf_logits = self.model(data)
-                y = data.y
-                
-                loss, _ = self.criterion(event_clf_logits.sigmoid(), y)
-                total_loss += loss
-                logits.append(event_clf_logits.data.cpu())
-            
-            total_loss /= batch_size
-            loss_dict = {'total':total_loss.item(), 'focal':total_loss.item()}
-            loss = total_loss
+        data.to(self.device)
+        event_clf_logits = self.model(data.x, data.coords, data.batch)
+        y = data.y
         
-        logits = torch.cat(logits)
+        loss, loss_dict = self.criterion(event_clf_logits.sigmoid(), y)
+        
         self.optimizer.zero_grad()
         loss.backward()
         self.optimizer.step()
-        return loss_dict, logits
+        return loss_dict, event_clf_logits.data.cpu()
 
     def run_one_epoch(self, data_loader, epoch, phase):
         loader_len = len(data_loader)
@@ -126,8 +80,8 @@ class Tau3MuGNNs:
         for idx, batch in enumerate(pbar):
         
             loss_dict, clf_logits = run_one_batch(batch)
-            y = torch.cat([data.y.cpu() for data in batch])
-            sample_idxs = torch.cat([data.sample_idx.cpu() for data in batch])
+            y = batch.y.cpu()
+            sample_idxs = batch.sample_idx.cpu()
             
             clf_logits = clf_logits.cpu()
             
@@ -137,8 +91,9 @@ class Tau3MuGNNs:
                 
             all_clf_logits.extend(list(clf_logits)), all_clf_labels.extend(list(y)), all_sample_idxs.extend(list(sample_idxs))
 
-            #if idx == min([10, len(pbar)-1]):
-            if len(all_clf_logits) > 10000:    
+            if idx == len(pbar)-1:
+            #if len(all_clf_logits) > 10000:    
+            #if idx == 50:
                 '''
                 if phase == 'train': # have to reset
                     

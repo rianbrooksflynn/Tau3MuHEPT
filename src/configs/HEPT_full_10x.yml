@@ -37,7 +37,7 @@ model_name: trans_hept
 model_kwargs:
   block_size: 100
   n_hashes: 3
-  num_buckets: 140
+  num_regions: 150
   pe_type: none
   num_heads: 3
   h_dim: 128
@@ -55,7 +55,7 @@ loss_kwargs:
 optimizer: # Optimization options
   resume: False
   lr: 1.0e-3 # Learning rate of AdamW algorithm
-  batch_size: 2048 # Number of samples to use in each batch
+  batch_size: 1024 # Number of samples to use in each batch
   epochs: 100 # Number of epochs to train for
   focal_loss: True # Loss function 
   focal_alpha: 0.5 # Loss function parameter
