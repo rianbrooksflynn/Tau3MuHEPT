@@ -136,7 +136,7 @@ class Writer(SummaryWriter):
             self.add_scalar(k, v)
 
     def add_roc_curve(self, tag, labels, predictions, global_step=None,
-                      num_thresholds=127, weights=None, walltime=None, to_trigger_rate=False):
+                      num_thresholds=1000, weights=None, walltime=None, to_trigger_rate=False):
 
         torch._C._log_api_usage_once("tensorboard.logging.add_pr_curve")
         labels, predictions = make_np(labels), make_np(predictions)

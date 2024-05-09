@@ -1,0 +1,78 @@
+device: cuda:0
+note: "N/A"
+seed: 717
+num_threads: 32
+
+data: #Dataset-specific options. If these change, you must delete the previous processed files.
+  data_dir: ../data
+  log_dir: ../data/logs # Be careful to change this
+  signal_dataset: 'DSTau3Mu_pCut1GeV_DF_2pCut2.5GeV_etaCut28_500000.pkl'
+  bkg_dataset: 'MinBiasPU200_MTD.pkl'
+  add_self_loops: True
+  only_one_tau: True
+  splits: # Fractions of data to use for training, validation, and testing
+    train: 0.7
+    valid: 0.15
+    test: 0.15
+  pos_neg_ratio: 0.0 # Ratio of signal samples to background samples. Use 0 to use as much signal/background as possible.
+  
+  conditions:
+    1-mu_hit_station: '<=3'
+    2-mu_hit_neighbor: '==0'
+    3-mu_hit_type: '!=0'
+    4-mu_hit_bx: '==0'
+    
+  node_feature_names:
+    - mu_hit_sim_z
+    - mu_hit_sim_eta
+    - mu_hit_bend
+    - mu_hit_sim_r
+  
+  coords:
+    - mu_hit_sim_eta
+    - mu_hit_sim_phi
+
+ 
+model_name: trans_hept
+model_kwargs:
+  block_size: 5
+  n_hashes: 6
+  num_regions: 5
+  pe_type: none
+  num_heads: 3
+  h_dim: 128
+  n_layers: 2
+  out_dim: 64
+  num_w_per_dist: 10
+  endcap: 0
+  mask_frac: 0.2
+
+
+loss_name: focal
+loss_kwargs:
+  dist_metric: l2_rbf
+  tau: 0.05
+
+
+optimizer: # Optimization options
+  resume: False
+  lr: 1.0e-5 # Learning rate of AdamW algorithm
+  weight_decay: 0.0
+  batch_size: 1024 # Number of samples to use in each batch
+  epochs: 100 # Number of epochs to train for
+  focal_loss: True # Loss function 
+  focal_alpha: 0.5 # Loss function parameter
+  focal_gamma: 0. # Loss function parameter
+  total_alpha: 0.8
+  temp: 1
+
+eval:
+  test_interval: 5 # How often to evaluate on test-dataset
+  auroc_max_fpr: 0.001
+
+lr_scheduler_name: impatient
+lr_scheduler_metric: loss
+lr_scheduler_kwargs:
+  factor: 0.5
+  patience: 20
+  mode: "min"
