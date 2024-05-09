@@ -74,7 +74,7 @@ class Transformer(nn.Module):
         super().__init__()
         self.n_layers = kwargs["n_layers"]
         self.h_dim = kwargs["h_dim"]
-        self.num_classes = 1
+        self.out_dim = kwargs['out_dim']
 
         self.feat_encoder = nn.Sequential(
             nn.Linear(in_dim, self.h_dim),
@@ -108,8 +108,7 @@ class Transformer(nn.Module):
         self.helper_params["regions"] = self.regions
         self.helper_params["num_heads"] = kwargs["num_heads"]
 
-        if self.num_classes:
-            self.out_proj = nn.Linear(int(self.h_dim // 2), self.num_classes)
+        self.out_proj = nn.Linear(int(self.h_dim // 2), self.out_dim)
 
     def forward(self, x, coords, batch):
         x, kwargs, unpad_seq = prepare_input(x, coords, batch, self.helper_params)
@@ -125,8 +124,7 @@ class Transformer(nn.Module):
         
         out = global_mean_pool(out[unpad_seq], batch)
         
-        if self.num_classes:
-            out = self.out_proj(out)
+        out = self.out_proj(out)
             
         return out
 
@@ -166,3 +164,23 @@ class Attn(nn.Module):
         x = x + self.dropout(ff_output)
 
         return x
+
+class Decoder(nn.Module):
+    def __init__(self, in_dim, **kwargs):
+        super().__init__()
+        
+        self.mlp = MLP(
+                channel_list=[in_dim, in_dim*2, in_dim, in_dim*2, in_dim],
+                norm="layer_norm",
+                act='relu',
+                norm_kwargs={"mode": "graph"},
+            )
+            
+        self.out = nn.Linear(in_dim, 1)
+    
+    def forward(self, x):
+        x = self.mlp(x)
+        x = self.out(x)
+        
+        return x
+    
