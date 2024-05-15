@@ -1,5 +1,6 @@
 import torch
 from torch import nn
+from torch.nn import MultiheadAttention
 from torch.nn.functional import tanh
 from torch_geometric.nn import MLP
 from . import HEPTAttention
@@ -75,7 +76,8 @@ class Transformer(nn.Module):
         self.n_layers = kwargs["n_layers"]
         self.h_dim = kwargs["h_dim"]
         self.out_dim = kwargs['out_dim']
-
+        self.baseline = kwargs.get('baseline', False)
+        
         self.feat_encoder = nn.Sequential(
             nn.Linear(in_dim, self.h_dim),
             nn.ReLU(),
@@ -111,20 +113,35 @@ class Transformer(nn.Module):
         self.out_proj = nn.Linear(int(self.h_dim // 2), self.out_dim)
 
     def forward(self, x, coords, batch):
-        x, kwargs, unpad_seq = prepare_input(x, coords, batch, self.helper_params)
+        if not self.baseline:
+            x, kwargs, unpad_seq = prepare_input(x, coords, batch, self.helper_params)
 
-        encoded_x = self.feat_encoder(x)
-        all_encoded_x = [encoded_x]
-        for i in range(self.n_layers):
-            encoded_x = self.attns[i](encoded_x, kwargs)
-            all_encoded_x.append(encoded_x)
-        
-        encoded_x = tanh(self.W(torch.cat(all_encoded_x, dim=-1)))
-        out = encoded_x + self.dropout(self.mlp_out(encoded_x))
-        
-        out = global_mean_pool(out[unpad_seq], batch)
-        
-        out = self.out_proj(out)
+            encoded_x = self.feat_encoder(x)
+            all_encoded_x = [encoded_x]
+            for i in range(self.n_layers):
+                encoded_x = self.attns[i](encoded_x, kwargs)
+                all_encoded_x.append(encoded_x)
+            
+            encoded_x = tanh(self.W(torch.cat(all_encoded_x, dim=-1)))
+            out = encoded_x + self.dropout(self.mlp_out(encoded_x))
+            
+            out = global_mean_pool(out[unpad_seq], batch)
+            
+            out = self.out_proj(out)
+        else:
+
+            encoded_x = self.feat_encoder(x)
+            all_encoded_x = [encoded_x]
+            for i in range(self.n_layers):
+                encoded_x = self.attns[i](encoded_x, None)
+                all_encoded_x.append(encoded_x)
+            
+            encoded_x = tanh(self.W(torch.cat(all_encoded_x, dim=-1)))
+            out = encoded_x + self.dropout(self.mlp_out(encoded_x))
+            
+            out = global_mean_pool(out, batch)
+            
+            out = self.out_proj(out)
             
         return out
 
@@ -134,14 +151,19 @@ class Attn(nn.Module):
         super().__init__()
         self.dim_per_head = kwargs["h_dim"]
         self.num_heads = kwargs["num_heads"]
-
+        self.baseline = kwargs.get('baseline', False)
         self.w_q = nn.Linear(self.dim_per_head, self.dim_per_head * self.num_heads, bias=False)
         self.w_k = nn.Linear(self.dim_per_head, self.dim_per_head * self.num_heads, bias=False)
         self.w_v = nn.Linear(self.dim_per_head, self.dim_per_head * self.num_heads, bias=False)
 
         # +2 for data.pos
-        self.attn = HEPTAttention(self.dim_per_head + coords_dim, **kwargs)
-
+        if kwargs['baseline'] == True:
+            self.attn = MultiheadAttention(self.num_heads*self.dim_per_head, self.num_heads)
+            self.out_linear = nn.Linear(self.num_heads * self.dim_per_head, self.dim_per_head)
+        else:
+            self.attn = HEPTAttention(self.dim_per_head + coords_dim, **kwargs)
+            
+        print('Attention Layer: ',self.attn)
         self.dropout = nn.Dropout(0.1)
         self.norm1 = nn.LayerNorm(self.dim_per_head)
         self.norm2 = nn.LayerNorm(self.dim_per_head)
@@ -157,7 +179,12 @@ class Attn(nn.Module):
     def forward(self, x, kwargs):
         x_normed = self.norm1(x)
         q, k, v = self.w_q(x_normed), self.w_k(x_normed), self.w_v(x_normed)
-        aggr_out = self.attn(q, k, v, pe=kwargs["coords"], w_rpe=self.w_rpe, **kwargs)
+        
+        if not self.baseline:
+            aggr_out = self.attn(q, k, v, pe=kwargs["coords"], w_rpe=self.w_rpe, **kwargs)
+        else:
+            aggr_out = self.attn(q, k, v, need_weights=False)[0]
+            aggr_out = self.out_linear(aggr_out)
 
         x = x + self.dropout(aggr_out)
         ff_output = self.ff(self.norm2(x))
