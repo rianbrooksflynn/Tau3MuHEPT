@@ -157,7 +157,7 @@ class Attn(nn.Module):
         self.w_v = nn.Linear(self.dim_per_head, self.dim_per_head * self.num_heads, bias=False)
 
         # +2 for data.pos
-        if kwargs['baseline'] == True:
+        if self.baseline:
             self.attn = MultiheadAttention(self.num_heads*self.dim_per_head, self.num_heads)
             self.out_linear = nn.Linear(self.num_heads * self.dim_per_head, self.dim_per_head)
         else:
