@@ -12,13 +12,13 @@ def load_checkpoint(model, optimizer, log_path, device):
     return start_epoch
 
 
-def save_checkpoint(model, optimizer, log_path, epoch):
+def save_checkpoint(model, optimizer, log_path, epoch, name='model'):
     print(f'[INFO] Saving checkpoint to {log_path.name}')
     torch.save({
         'epoch': epoch,
         'model_state_dict': model.state_dict(),
         'optimizer_state_dict': optimizer.state_dict(),
-    }, log_path / 'model.pt')
+    }, log_path / f'{name}.pt')
 
 
 def set_seed(seed):
