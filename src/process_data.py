@@ -21,4 +21,4 @@ setting = args.setting
 config = yaml.safe_load(Path(f'./configs/{setting}.yml').open('r'))
 print(f'[INFO] Running {setting} on cpu')
 
-data_loaders, x_dim, dataset = get_data_loaders(setting, config['data'], batch_size=1)
+data_loaders, x_dim, dataset = get_data_loaders_contrastive(setting, config['data'], batch_size=1)
