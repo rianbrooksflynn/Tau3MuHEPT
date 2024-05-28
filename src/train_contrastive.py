@@ -61,8 +61,13 @@ class Tau3MuGNNs:
             
             mask = torch.rand(pos_batch.x.size()[0])>self.mask_frac
             
+            i = 0
             while len(torch.unique(pos_batch.batch)) != len(torch.unique(pos_batch.batch[mask])):
-                mask = torch.rand(pos_batch.x.size()[0])>.2
+                mask = torch.rand(pos_batch.x.size()[0])>self.mask_frac
+                i += 1
+                
+                if i == 100:
+                    print('Mask generation has taken 100 iterations. Consider reducing the batch size or the masking fraction.')
             
             pos_embeds = self.model(pos_batch.x, pos_batch.coords, pos_batch.batch)
             neg_embeds = self.model(neg_batch.x, neg_batch.coords, neg_batch.batch)
