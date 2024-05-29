@@ -77,6 +77,8 @@ class Transformer(nn.Module):
         self.h_dim = kwargs["h_dim"]
         self.out_dim = kwargs['out_dim']
         self.baseline = kwargs.get('baseline', False)
+        self.mlp_out_layers = kwargs['mlp_out_layers']
+        self.mlp_out_hdim = kwargs['mlp_out_hdim']
         
         self.feat_encoder = nn.Sequential(
             nn.Linear(in_dim, self.h_dim),
@@ -94,8 +96,8 @@ class Transformer(nn.Module):
         self.mlp_out = MLP(
             in_channels=int(self.h_dim // 2),
             out_channels=int(self.h_dim // 2),
-            hidden_channels=256,
-            num_layers=5,
+            hidden_channels=self.mlp_out_hdim,
+            num_layers=self.mlp_out_layers,
             norm="layer_norm",
             act="tanh",
             norm_kwargs={"mode": "graph"},
