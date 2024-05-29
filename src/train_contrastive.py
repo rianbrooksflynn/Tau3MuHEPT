@@ -12,7 +12,7 @@ from models import Decoder
 from models.get_model import get_model
 #from model_efficiency import main as model_eff
 #from model_efficiency import eval_one_batch, run_one_epoch, generate_roc
-from torch.optim.lr_scheduler import ReduceLROnPlateau
+from torch.optim.lr_scheduler import ReduceLROnPlateau, OneCycleLR
 from itertools import cycle
 torch.autograd.set_detect_anomaly(True)
         
@@ -40,7 +40,8 @@ class Tau3MuGNNs:
         
         self.hept_opt = torch.optim.AdamW(self.model.parameters(), lr=config['optimizer']['lr'], weight_decay=config['optimizer']['weight_decay'])
         self.dec_opt = torch.optim.AdamW(self.decoder.parameters(), lr=config['optimizer']['lr'], weight_decay=config['optimizer']['weight_decay'])
-        #self.lr_s = ReduceLROnPlateau(self.optimizer, **lr_s_kwargs)
+        self.lr_s = OneCycleLR(self.hept_opt, max_lr=1e-5, steps_per_epoch=len(self.data_loaders['train'][0]), epochs=self.config['optimizer']['epochs']+1, anneal_strategy='linear', pct_start=0.3)
+        
         self.criterion = Criterion(config['optimizer'])
         self.node_clf = config['data'].get('node_clf', False)
       
@@ -87,10 +88,10 @@ class Tau3MuGNNs:
         pos_batch.to(self.device)
         neg_batch.to(self.device)
         
-        mask = torch.rand(pos_batch.x.size()[0])>.2
+        mask = torch.rand(pos_batch.x.size()[0])>self.mask_frac
         
         while len(torch.unique(pos_batch.batch)) != len(torch.unique(pos_batch.batch[mask])):
-            mask = torch.rand(pos_batch.x.size()[0])>.2
+            mask = torch.rand(pos_batch.x.size()[0])>self.mask_frac
                 
         self.model.train()
         self.decoder.train()
@@ -108,6 +109,7 @@ class Tau3MuGNNs:
         self.hept_opt.zero_grad()
         loss.backward(retain_graph=True)
         self.hept_opt.step()
+        self.lr_s.step()
         
         self.dec_opt.zero_grad()
         fl.backward()
