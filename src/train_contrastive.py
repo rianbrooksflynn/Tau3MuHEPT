@@ -1,6 +1,7 @@
 import shutil
 import torch
 import torch.nn as nn
+from torch.nn.utils import clip_grad_norm_
 import yaml
 from datetime import datetime
 from tqdm import tqdm
@@ -8,7 +9,7 @@ from pathlib import Path
 
 from utils import Criterion, Writer, log_epoch, load_checkpoint, save_checkpoint, set_seed, add_cuts_to_config
 from utils import get_data_loaders_contrastive as get_data_loaders
-from models import Decoder
+
 from models.get_model import get_model
 #from model_efficiency import main as model_eff
 #from model_efficiency import eval_one_batch, run_one_epoch, generate_roc
@@ -24,24 +25,35 @@ class Tau3MuGNNs:
         self.log_path = log_path
         self.writer = Writer(log_path)
         self.log_dir=self.writer.log_dir
+        self.qat = config['model_kwargs']['qat']
+        self.baseline = config['model_kwargs']['baseline']
+        self.lr_s = config['optimizer'].get('lr_s', False)
+        self.grad_clip = config['optimizer'].get('grad_clip', False)
+        
+          
+        if self.qat:
+            from models import QDecoder as Decoder
+        else:
+            from models import Decoder
         
         endcap = config['model_kwargs']['endcap']
-        
-        lr_s_kwargs = config['lr_scheduler_kwargs']
         
         self.data_loaders, x_dim, dataset = get_data_loaders(setting, config['data'], config['optimizer']['batch_size'], endcap=endcap)
         
         self.mask_frac = config['model_kwargs']['mask_frac']
         self.model = get_model(config['model_kwargs'],dataset)   
         #self.init_model(self.model)
-        self.model.to(self.device)
+        
         self.decoder = Decoder(config['model_kwargs']['out_dim'])
-        self.decoder.to(self.device)
         
         self.hept_opt = torch.optim.AdamW(self.model.parameters(), lr=config['optimizer']['lr'], weight_decay=config['optimizer']['weight_decay'])
         self.dec_opt = torch.optim.AdamW(self.decoder.parameters(), lr=config['optimizer']['lr'], weight_decay=config['optimizer']['weight_decay'])
-        self.lr_s = OneCycleLR(self.hept_opt, max_lr=1e-5, steps_per_epoch=len(self.data_loaders['train'][0]), epochs=self.config['optimizer']['epochs']+1, anneal_strategy='linear', pct_start=0.3)
         
+        if self.lr_s:
+            self.max_lr = float(config['optimizer']['max_lr'])
+            self.lr_s = OneCycleLR(self.hept_opt, max_lr=self.max_lr, steps_per_epoch=len(self.data_loaders['train'][0]), epochs=self.config['optimizer']['epochs']+1, anneal_strategy='linear', pct_start=0.3)
+            self.lr_s_dec = OneCycleLR(self.dec_opt, max_lr=self.max_lr, steps_per_epoch=len(self.data_loaders['train'][0]), epochs=self.config['optimizer']['epochs']+1, anneal_strategy='linear', pct_start=0.3)
+            
         self.criterion = Criterion(config['optimizer'])
         self.node_clf = config['data'].get('node_clf', False)
       
@@ -55,6 +67,10 @@ class Tau3MuGNNs:
     def eval_one_batch(self, data):
         self.model.eval()
         self.decoder.eval()
+        
+        self.model.to(self.device)
+        self.decoder.to(self.device)
+        
         with torch.no_grad():
             pos_batch, neg_batch = data
             pos_batch.to(self.device)
@@ -83,15 +99,21 @@ class Tau3MuGNNs:
         return loss_dict, event_clf_logits
         
     def train_one_batch(self, data):
+        self.model.to(self.device)
+        self.decoder.to(self.device)
         
         pos_batch, neg_batch = data
+        del data
         pos_batch.to(self.device)
         neg_batch.to(self.device)
         
         mask = torch.rand(pos_batch.x.size()[0])>self.mask_frac
-        
+        i = 0
         while len(torch.unique(pos_batch.batch)) != len(torch.unique(pos_batch.batch[mask])):
+            i += 1
             mask = torch.rand(pos_batch.x.size()[0])>self.mask_frac
+            if i == 100:
+                print('Mask generation has taken 100 iterations. Consider reducing the batch size or the masking fraction.')
                 
         self.model.train()
         self.decoder.train()
@@ -108,13 +130,17 @@ class Tau3MuGNNs:
         
         self.hept_opt.zero_grad()
         loss.backward(retain_graph=True)
+        
+        if self.grad_clip: clip_grad_norm_(self.model.parameters(), 0.1)
         self.hept_opt.step()
-        self.lr_s.step()
+        if self.lr_s: self.lr_s.step()
         
         self.dec_opt.zero_grad()
         fl.backward()
         self.dec_opt.step()
+        if self.lr_s: self.lr_s_dec.step()
         
+        del pos_batch, neg_batch
         return loss_dict, event_clf_logits
 
     def run_one_epoch(self, data_loader, epoch, phase):
@@ -137,6 +163,10 @@ class Tau3MuGNNs:
             loss_dict, clf_logits = run_one_batch((pos_batch,neg_batch))
             y = torch.cat([pos_batch.y.cpu(), neg_batch.y.cpu()])
             sample_idxs = torch.cat([pos_batch.sample_idx.cpu(), neg_batch.sample_idx.cpu()])
+            
+            del pos_batch, neg_batch
+            
+            torch.cuda.empty_cache()
             
             clf_logits = clf_logits.cpu()
             

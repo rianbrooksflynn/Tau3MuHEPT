@@ -32,7 +32,7 @@ class Tau3MuGNNs:
         #self.init_model(self.model)
         self.model.to(self.device)
 
-        self.optimizer = torch.optim.AdamW(self.model.parameters(), lr=config['optimizer']['lr'])
+        self.optimizer = torch.optim.AdamW(self.model.parameters(), lr=config['optimizer']['lr'], weight_decay=config['optimizer']['weight_decay'])
         #self.lr_s = ReduceLROnPlateau(self.optimizer, **lr_s_kwargs)
         self.criterion = Criterion(config['optimizer'])
         self.node_clf = config['data'].get('node_clf', False)

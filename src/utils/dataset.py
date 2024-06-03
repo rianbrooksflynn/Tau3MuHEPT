@@ -523,9 +523,9 @@ def get_data_loaders(setting, data_config, batch_size, endcap=1):
     
     dataset = Tau3MuDataset(setting, data_config, idx)
     print('Retrieving Data Loaders from:'+dataset.processed_paths[idx])
-    train_loader = DataListLoader(dataset[dataset.idx_split['train']], batch_size=batch_size, shuffle=True)
-    valid_loader = DataListLoader(dataset[dataset.idx_split['valid']], batch_size=batch_size, shuffle=True)
-    test_loader = DataListLoader(dataset[dataset.idx_split['test']], batch_size=batch_size, shuffle=True)
+    train_loader = DataLoader(dataset[dataset.idx_split['train']], batch_size=batch_size, shuffle=True)
+    valid_loader = DataLoader(dataset[dataset.idx_split['valid']], batch_size=batch_size, shuffle=True)
+    test_loader = DataLoader(dataset[dataset.idx_split['test']], batch_size=batch_size, shuffle=True)
     return {'train': train_loader, 'valid': valid_loader, 'test': test_loader}, dataset.x_dim, dataset
 
 
