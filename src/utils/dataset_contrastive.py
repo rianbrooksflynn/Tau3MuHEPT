@@ -12,10 +12,7 @@ import numpy as np
 import pandas as pd
 from tqdm import tqdm
 from itertools import permutations, product
-try:
-    from .root2df import Root2Df
-except:
-    from root2df import Root2Df
+from .root2df import Root2Df
 
 import torch
 import torch_geometric
@@ -291,10 +288,13 @@ class Tau3MuDataset(InMemoryDataset):
         x = Tau3MuDataset.get_node_features(entry, self.node_feature_names)
         coords = self.get_coors_for_hits(entry)
         
+        gen_mu = Tau3MuDataset.get_gen_mu_kinematics(entry)
+        gen_tau = Tau3MuDataset.get_gen_tau_kinematics(entry)
+        
         y = torch.tensor(entry['y']).float().view(-1, 1)
 
-            
-        return Data(x=x, y=y, coords=coords, sample_idx=entry['og_index'], endcap=endcap, only_eval=only_eval)
+        
+        return Data(x=x, y=y, coords=coords, sample_idx=entry['og_index'], endcap=endcap, only_eval=only_eval, gen_mu=gen_mu, gen_tau=gen_tau)
 
 
     def get_df_save_path(self):
@@ -370,7 +370,26 @@ class Tau3MuDataset(InMemoryDataset):
         
         return torch.tensor(features, dtype=torch.float)
 
-  
+    @staticmethod
+    def get_gen_mu_kinematics(entry):
+        
+        if entry['y'] == 1:
+            features = [entry[feature] for feature in ['gen_mu_pt', 'gen_mu_eta', 'gen_mu_phi']]
+            features = np.stack(features, axis=1)
+        else:
+            return torch.empty(3,3)
+        
+        return torch.tensor(features, dtype=torch.float)
+    
+    @staticmethod
+    def get_gen_tau_kinematics(entry):
+        
+        if entry['y'] == 1:
+            features = np.stack([entry[feature] for feature in ['gen_tau_pt', 'gen_tau_eta', 'gen_tau_phi']], axis=1)
+        else:
+            return torch.empty(1,3)
+        
+        return torch.tensor(features, dtype=torch.float)
 
     @staticmethod
     def get_idx_split(data, splits, pos2neg):

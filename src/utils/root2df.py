@@ -2,7 +2,7 @@
 # The code may only work perfectly on x86_64.
 
 import pandas as pd
-import uproot3 as uproot
+import uproot
 
 import ast
 import configparser
