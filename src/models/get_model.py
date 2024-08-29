@@ -7,14 +7,30 @@ def get_model(model_kwargs, dataset=None, test_N=10000, test_k=100, count_flops=
     
     if model_kwargs['qat'] == True:
         from . import QTransformer as Transformer
-    else:
-        from . import Transformer
-        
-    model = Transformer(
+    elif model_kwargs.get('tracing', False) == True:
+        from .transformer_traceable import Transformer
+        model = Transformer(
         in_dim=dataset.x_dim,
         coords_dim=2,
         **model_kwargs,
-    )
+        )
+    elif model_kwargs.get('cluster', False) == True:
+        from . import TransformerCluster as Transformer
+        
+        model = Transformer(
+        in_dim=dataset.x_dim,
+        coords_dim=2,
+        **model_kwargs,
+        )
+        
+    else:
+        from . import Transformer
+        
+        model = Transformer(
+        in_dim=dataset.x_dim,
+        coords_dim=2,
+        **model_kwargs,
+        )
 
     num_params = sum(p.numel() for p in model.parameters() if p.requires_grad)
     print(f"Number of parameters: {num_params}")
