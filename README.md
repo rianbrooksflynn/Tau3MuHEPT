@@ -74,3 +74,15 @@ Standard output provides basic training logs, while more detailed logs and inter
 ```
 python -m tensorboard.main serve --logdir=$LogDir
 ```
+
+# Constructing a Model outisde of the Workflow
+
+To construct a model from a given config, you can follow this workflow in a python script:
+
+```
+from models.model import get_model
+config = yaml.safe_load(Path(f'configs/{config_name}.yml').open('r'))
+data_loaders, x_dim, dataset = get_data_loaders('HEPT_full_10x_contrastive', config['data'], 1, endcap=0)
+model = get_model(config['model_kwargs'],dataset)
+
+```
