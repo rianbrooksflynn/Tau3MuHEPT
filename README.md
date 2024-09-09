@@ -77,12 +77,44 @@ python -m tensorboard.main serve --logdir=$LogDir
 
 # Constructing a Model outisde of the Workflow
 
-To construct a model from a given config, you can follow this workflow in a python script:
+To construct a HEPT model from a given config, you can follow this workflow in a python script:
 
 ```
 from models.model import get_model
-config = yaml.safe_load(Path(f'configs/{config_name}.yml').open('r'))
-data_loaders, x_dim, dataset = get_data_loaders('HEPT_full_10x_contrastive', config['data'], 1, endcap=0)
+from models import Decoder
+
+config = yaml.safe_load(Path(f'configs/[config_name].yml').open('r'))
+data_loaders, x_dim, dataset = get_data_loaders('[config_name]'', config['data'], 1, endcap=0)
 model = get_model(config['model_kwargs'],dataset)
+decoder = Decoder(config['model_kwargs']['out_dim'])
+```
+
+## Loading pre-trained weights
+To load a pre-trained model from a specific log:
 
 ```
+setting = '[config_name]'
+log = '[log_name]'
+
+config = yaml.safe_load(Path(f'configs/[config_name].yml').open('r'))
+data_loaders, x_dim, dataset = get_data_loaders('[config_name]'', config['data'], 1, endcap=0)
+
+model = get_model(config['model_kwargs'],dataset)  
+decoder = Decoder(config['model_kwargs']['out_dim'])
+
+with open(f'[log]/decoder.pt', 'rb') as handle:
+    decoder_state_dict = torch.load(handle,map_location=torch.device('cpu'))['model_state_dict']
+
+with open(f'[log]/model.pt', 'rb') as handle:
+    model_state_dict = torch.load(handle,map_location=torch.device('cpu'))['model_state_dict']
+
+decoder.load_state_dict(decoder_state_dict)
+model.load_state_dict(model_state_dict)
+
+```
+
+
+
+
+
+
