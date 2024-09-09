@@ -29,7 +29,7 @@ conda activate tau3mu_hept
 ```
 
 ## 4. Get the data
-To run the code, you will need datasets in the form of '.pkl' files. Request those datasets and put them in the right place.
+To run the code, you will need datasets in the form of `.pkl` files. Request those datasets and put them in `Tau3MuHEPT/data/raw/` and make sure their file names are appropriately listed in `processing.cfg`.
 
 When running the code, those dataframes will be processed according to the specific setting, and the processed files will be saved under `$ProjectDir/data/processed-[setting]-[cut_id]`. In this project, for simplicity we call them `SignalPU0, SignalPU200, BkgPU200` as `pos0, pos200, neg200` respectively.
 
