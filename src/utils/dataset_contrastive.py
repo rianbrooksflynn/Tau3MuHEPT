@@ -290,11 +290,18 @@ class Tau3MuDataset(InMemoryDataset):
         
         gen_mu = Tau3MuDataset.get_gen_mu_kinematics(entry)
         gen_tau = Tau3MuDataset.get_gen_tau_kinematics(entry)
-        
         y = torch.tensor(entry['y']).float().view(-1, 1)
+        
+        if 'mu_hit_truth' in entry.keys():
+            hit_truth = self.get_hit_truth(entry)
+            return Data(x=x, y=y, coords=coords, sample_idx=entry['og_index'], endcap=endcap, only_eval=only_eval, gen_mu=gen_mu, gen_tau=gen_tau, hit_truth=hit_truth)
+
+        else:
+            return Data(x=x, y=y, coords=coords, sample_idx=entry['og_index'], endcap=endcap, only_eval=only_eval, gen_mu=gen_mu, gen_tau=gen_tau)
 
         
-        return Data(x=x, y=y, coords=coords, sample_idx=entry['og_index'], endcap=endcap, only_eval=only_eval, gen_mu=gen_mu, gen_tau=gen_tau)
+
+        
 
 
     def get_df_save_path(self):
@@ -374,10 +381,18 @@ class Tau3MuDataset(InMemoryDataset):
     def get_gen_mu_kinematics(entry):
         
         if entry['y'] == 1:
-            features = [entry[feature] for feature in ['gen_mu_pt', 'gen_mu_eta', 'gen_mu_phi']]
-            features = np.stack(features, axis=1)
+            
+            pt = entry['gen_mu_pt']
+            eta = entry['gen_mu_eta']
+            phi = entry['gen_mu_phi']
+            
+            lead, sublead, soft = np.argsort(pt)
+            
+            features = [np.array([pt[i],eta[i],phi[i]]) for i in (lead,sublead,soft)]
+            
+            features = np.concatenate(features).reshape(1,9)
         else:
-            return torch.empty(3,3)
+            return torch.empty(1,9)
         
         return torch.tensor(features, dtype=torch.float)
     
@@ -385,7 +400,7 @@ class Tau3MuDataset(InMemoryDataset):
     def get_gen_tau_kinematics(entry):
         
         if entry['y'] == 1:
-            features = np.stack([entry[feature] for feature in ['gen_tau_pt', 'gen_tau_eta', 'gen_tau_phi']], axis=1)
+            features = np.stack([entry[feature] for feature in ['gen_tau_pt', 'gen_tau_eta', 'gen_tau_phi']], axis=1).reshape(1,3)
         else:
             return torch.empty(1,3)
         
@@ -439,6 +454,14 @@ class Tau3MuDataset(InMemoryDataset):
             
         coors = torch.tensor(np.stack([entry[feature] for feature in self.coords]).T)
         return coors
+        
+    def get_hit_truth(self, entry):
+        if entry['y'] == 1:
+
+            return torch.tensor(entry['mu_hit_truth'])
+        else:
+            return torch.zeros(entry[eta].shape)
+        
         
     @staticmethod
     def mix(pos0, neg200, pos200, setting):
