@@ -224,7 +224,7 @@ class Tau3MuDataset(InMemoryDataset):
             if masked_entry == None: # Don't use events that don't have any hits left after the mask is applied
                 continue
             
-            if 'full' in self.setting:
+            if 'half' not in self.setting:
                 #args_agg.append(masked_entry)
      
                 data_list.append(self._process_one_entry(masked_entry))
@@ -247,18 +247,11 @@ class Tau3MuDataset(InMemoryDataset):
                 print('[INFO] Saving data.pt...')
                 torch.save((data, slices, idx_split), self.processed_paths[i])
         
-        elif 'full' in self.setting:
-            #p = multiprocessing.Pool(64)
-            #p.starmap_async(self._process_one_entry, args_agg, callback=(lambda x: data_list.append(x)), error_callback=lambda x: print('Failed'))
-            #p.close()
-            #p.join()  
+        else:
             
-            idx_split = Tau3MuDataset.get_idx_split(data_list, self.splits, self.pos_neg_ratio)
-            print(len(data_list))
             data, slices = self.collate(data_list)
         
             print(self.processed_paths)
-            print('[INFO] Saving data.pt...')
             torch.save((data, slices, idx_split), self.processed_paths[0])
 
     def _process_one_entry(self, entry, endcap=0, only_eval=False):
