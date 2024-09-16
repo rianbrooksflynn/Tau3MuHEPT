@@ -18,7 +18,7 @@ from itertools import product
 from matplotlib import figure
 import matplotlib.pyplot as plt
 from sklearn import metrics
-from sklearn.utils import check_matplotlib_support
+#from sklearn.utils import check_matplotlib_support
 
 from torch.utils.tensorboard import SummaryWriter
 from torch.utils.tensorboard.summary import hparams
@@ -30,14 +30,16 @@ from tensorboard.compat.proto.tensor_shape_pb2 import TensorShapeProto
 from tensorboard.compat.proto.summary_pb2 import Summary
 
 
-def log_epoch(epoch, phase, loss_dict, clf_logits, clf_labels, batch, sample_idxs, writer=None, exp_probs=None, exp_labels=None):
+def log_epoch(epoch, phase, loss_dict, clf_logits, clf_labels, batch, sample_idxs, writer=None, exp_probs=None, exp_labels=None, reg=False):
     desc = f'[Epoch: {epoch}]: {phase}........., ' if batch else f'[Epoch: {epoch}]: {phase} finished, '
     for k, v in loss_dict.items():
         if not batch and writer is not None:
             writer.add_scalar(f'{phase}/{k}', v, epoch)
         desc += f'{k}: {v:.3e}, '
-    if batch:
+    if batch or reg:
         return desc
+    
+    
     
     sample_dict = {}
     
@@ -79,6 +81,7 @@ def log_epoch(epoch, phase, loss_dict, clf_logits, clf_labels, batch, sample_idx
         writer.add_roc_curve(f'ROC_Curve/{phase}', clf_labels, clf_probs, epoch)
         writer.add_roc_curve(f'TriggerRate_Curve/{phase}', clf_labels, clf_probs, epoch, to_trigger_rate=True)
 
+    '''
     fig = PlotROC(fpr=fpr*31000, tpr=recall, roc_auc=auroc).plot().figure_  # kHz
     if writer is not None: writer.add_figure(f'TriggerRate/{phase}', fig, epoch)
 
@@ -89,7 +92,7 @@ def log_epoch(epoch, phase, loss_dict, clf_logits, clf_labels, batch, sample_idx
     cm = metrics.confusion_matrix(clf_labels, y_pred=clf_probs > thres[indices[1]], normalize=None)
     fig = PlotCM(confusion_matrix=cm, display_labels=['Neg', 'Pos']).plot(cmap=plt.cm.Blues).figure_
     if writer is not None: writer.add_figure(f'Confusion Matrix - max_fpr_over_10/{phase}', fig, epoch)
-
+    '''
     desc += f'auroc: {auroc:.3f}'
 
     if exp_probs is not None and exp_labels is not None and -1 not in exp_labels and -1 not in exp_probs:
