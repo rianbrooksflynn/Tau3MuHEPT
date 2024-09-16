@@ -78,6 +78,7 @@ class Tau3MuDataset(InMemoryDataset):
             return 'data.pt'
 
     def download(self):
+
         print('Please put .pkl or .csv files ino $PROJECT_DIR/data/raw!')
         raise KeyboardInterrupt
 
@@ -198,7 +199,7 @@ class Tau3MuDataset(InMemoryDataset):
             neg_data_list = []
             data_list = [pos_data_list,neg_data_list]
             
-        elif 'full' in self.setting:
+        else:
             
             global full_maxs
             global full_mins
@@ -250,7 +251,7 @@ class Tau3MuDataset(InMemoryDataset):
         else:
             
             data, slices = self.collate(data_list)
-        
+            idx_split = Tau3MuDataset.get_idx_split(data_list, self.splits, self.pos_neg_ratio)
             print(self.processed_paths)
             torch.save((data, slices, idx_split), self.processed_paths[0])
 
