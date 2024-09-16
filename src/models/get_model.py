@@ -7,6 +7,11 @@ def get_model(model_kwargs, dataset=None, test_N=10000, test_k=100, count_flops=
     
     if model_kwargs['qat'] == True:
         from . import QTransformer as Transformer
+        model = Transformer(
+        in_dim=dataset.x_dim,
+        coords_dim=2,
+        **model_kwargs,
+        )
     elif model_kwargs.get('tracing', False) == True:
         from .transformer_traceable import Transformer
         model = Transformer(
