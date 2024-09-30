@@ -142,7 +142,7 @@ class TranformerPreprocessed(nn.Module):
         so = torch.einsum("...ij,...jd->...id", qk, s_value) # (n_hashes, num_heads, -1, block_size, dim_per_head)
 
         # Unsort from buckets
-        arange = torch.arange(q_positions.shape[-1]).expand_as(q_positions)
+        arange = torch.arange(q_positions.shape[-1], device=q_positions.device).expand_as(q_positions)
         q_rev_positions = torch.empty_like(q_positions).scatter(-1, q_positions, arange)
 
         so_squeezed = so.view(self.n_hashes, self.num_heads, -1, self.dim_per_head)
@@ -224,7 +224,7 @@ class TranformerPreprocessed(nn.Module):
         so = torch.einsum("...ij,...jd->...id", qk, s_value) # (n_hashes, num_heads, -1, block_size, dim_per_head)
 
         # Unsort from buckets
-        arange = torch.arange(q_positions.shape[-1]).expand_as(q_positions)
+        arange = torch.arange(q_positions.shape[-1], device=q_positions.device).expand_as(q_positions)
         q_rev_positions = torch.empty_like(q_positions).scatter(-1, q_positions, arange)
 
         so_squeezed = so.view(self.n_hashes, self.num_heads, -1, self.dim_per_head)
