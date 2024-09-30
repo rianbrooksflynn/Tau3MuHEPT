@@ -46,6 +46,8 @@ model_kwargs:
   num_w_per_dist: 10
   endcap: 0
   mask_frac: 0.2
+  qat: False
+  baseline: False
 
 
 loss_name: focal
