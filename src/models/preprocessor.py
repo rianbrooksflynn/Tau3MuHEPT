@@ -74,7 +74,7 @@ class Preprocessor():
         regions = torch.round(regions * 3) / 3
         return regions.permute(1, 0)
 
-    def _quantile_partition(sorted_indices: torch.Tensor, regions: torch.Tensor) -> torch.Tensor:
+    def _quantile_partition(self, sorted_indices: torch.Tensor, regions: torch.Tensor) -> torch.Tensor:
         num_elements = sorted_indices.shape[-1]
         region_size = torch.ceil(num_elements / regions)
         inverse_indices = torch.argsort(sorted_indices, dim=-1)
@@ -85,7 +85,7 @@ class Preprocessor():
         return reassigned_regions
 
 
-    def _bit_shift(base: torch.Tensor, shift_idx: torch.Tensor) -> torch.Tensor:
+    def _bit_shift(self, base: torch.Tensor, shift_idx: torch.Tensor) -> torch.Tensor:
         max_base = base.max(dim=1, keepdim=True).values
         num_bits = torch.ceil(torch.log2(max_base + 1)).long()
         return (shift_idx << num_bits) | base
