@@ -54,7 +54,7 @@ class Preprocessor():
             combined_shifts = self._bit_shift(combined_shifts, batch[None])
             combined_shifts = combined_shifts.view(self.n_hashes, self.num_heads, -1)
 
-            pad_seq, unpad_seq = self.pad_and_unpad(batch, combined_shifts[0, 0], graph_sizes)
+            pad_seq, unpad_seq = self._pad_and_unpad(batch, combined_shifts[0, 0], graph_sizes)
 
             x = x[pad_seq]
             combined_shifts = combined_shifts[..., pad_seq]
