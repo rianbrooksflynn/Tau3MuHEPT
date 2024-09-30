@@ -1,5 +1,6 @@
 import torch
 from torch import nn
+from torch_geometric.nn.pool import global_mean_pool
 
 
 class TranformerPreprocessed(nn.Module):
@@ -75,7 +76,7 @@ class TranformerPreprocessed(nn.Module):
 
         self.out_proj = nn.Linear(int(self.dim_per_head // 2), self.out_dim)
 
-    def forward(self, x, combined_shifts, coords, unpad_seq):
+    def forward(self, x, combined_shifts, coords, unpad_seq, batch):
         # Encode features
         x = self.feat_encoder(x) # (padded_size, dim_per_head)
 
@@ -251,6 +252,7 @@ class TranformerPreprocessed(nn.Module):
         x = torch.tanh(self.W(all_encoded_x))
         x = x + self.mlp_out(x)
 
-        out = self.out_proj(torch.mean(x[unpad_seq], dim=0))
+        out = global_mean_pool(x[unpad_seq], batch)
+        out = self.out_proj(out)
 
         return out

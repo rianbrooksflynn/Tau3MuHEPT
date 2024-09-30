@@ -30,6 +30,7 @@ class Preprocessor():
                 - The combined shifts, of shape (n_hashes, num_heads, padded_size).
                 - The padded coordinates, of shape (padded_size, coords_dim).
                 - The unpadding sequence, of shape (padded_size).
+                - The original batch vector, of shape (num_elements).
         """
         with torch.no_grad():
             graph_sizes = batch.bincount()
@@ -60,7 +61,7 @@ class Preprocessor():
             combined_shifts = combined_shifts[..., pad_seq]
             coords = coords[pad_seq]
 
-        return x, combined_shifts, coords, unpad_seq
+        return x, combined_shifts, coords, unpad_seq, batch
 
     def _get_regions(self, num_and_hashes: int = 2) -> torch.Tensor:
         lower = 2
