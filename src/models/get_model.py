@@ -13,7 +13,7 @@ def get_model(model_kwargs, dataset=None, test_N=10000, test_k=100, count_flops=
         **model_kwargs,
         )
     elif model_kwargs.get('tracing', False) == True:
-        from .transformer_traceable import Transformer
+        from . import Transformer
         model = Transformer(
         in_dim=dataset.x_dim,
         coords_dim=2,
@@ -27,7 +27,14 @@ def get_model(model_kwargs, dataset=None, test_N=10000, test_k=100, count_flops=
         coords_dim=2,
         **model_kwargs,
         )
+    elif model_kwargs.get('preprocess', False) == True:
+        from . import TranformerPreprocessed as Transformer
         
+        model = Transformer(
+        in_dim=dataset.x_dim,
+        coords_dim=2,
+        **model_kwargs,
+        )
     else:
         from . import Transformer
         

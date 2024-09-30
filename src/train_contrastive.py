@@ -27,10 +27,19 @@ class Tau3MuGNNs:
         self.log_dir=self.writer.log_dir
         self.qat = config['model_kwargs']['qat']
         self.baseline = config['model_kwargs']['baseline']
+        self.preprocess = config['model_kwargs'].get('preprocess', False)
         self.lr_s = config['optimizer'].get('lr_s', False)
         self.grad_clip = config['optimizer'].get('grad_clip', False)
         
-          
+        if self.preprocess:
+            from models import Preprocessor
+            self.preprocessor = Preprocessor(
+                num_regions=config['model_kwargs']['num_regions'],
+                num_heads=config['model_kwargs']['num_heads'],
+                n_hashes=config['model_kwargs']['n_hashes'],
+                block_size=config['model_kwargs']['block_size']
+            )
+
         if self.qat:
             from models import QDecoder as Decoder
         else:
@@ -86,9 +95,14 @@ class Tau3MuGNNs:
                 if i == 100:
                     print('Mask generation has taken 100 iterations. Consider reducing the batch size or the masking fraction.')
             
-            pos_embeds = self.model(pos_batch.x, pos_batch.coords, pos_batch.batch)
-            neg_embeds = self.model(neg_batch.x, neg_batch.coords, neg_batch.batch)
-            aug_embeds = self.model(pos_batch.x[mask], pos_batch.coords[mask], pos_batch.batch[mask])
+            if self.preprocess:
+                pos_embeds = self.model(*self.preprocessor.prepare_input(pos_batch.x, pos_batch.coords, pos_batch.batch))
+                neg_embeds = self.model(*self.preprocessor.prepare_input(neg_batch.x, neg_batch.coords, neg_batch.batch))
+                aug_embeds = self.model(*self.preprocessor.prepare_input(pos_batch.x[mask], pos_batch.coords[mask], pos_batch.batch[mask]))
+            else:
+                pos_embeds = self.model(pos_batch.x, pos_batch.coords, pos_batch.batch)
+                neg_embeds = self.model(neg_batch.x, neg_batch.coords, neg_batch.batch)
+                aug_embeds = self.model(pos_batch.x[mask], pos_batch.coords[mask], pos_batch.batch[mask])
             
             pos_logits = self.decoder(pos_embeds.clone().detach())
             neg_logits = self.decoder(neg_embeds.clone().detach())
@@ -118,9 +132,14 @@ class Tau3MuGNNs:
         self.model.train()
         self.decoder.train()
         
-        pos_embeds = self.model(pos_batch.x, pos_batch.coords, pos_batch.batch)
-        neg_embeds = self.model(neg_batch.x, neg_batch.coords, neg_batch.batch)
-        aug_embeds = self.model(pos_batch.x[mask], pos_batch.coords[mask], pos_batch.batch[mask])
+        if self.preprocess:
+            pos_embeds = self.model(*self.preprocessor.prepare_input(pos_batch.x, pos_batch.coords, pos_batch.batch))
+            neg_embeds = self.model(*self.preprocessor.prepare_input(neg_batch.x, neg_batch.coords, neg_batch.batch))
+            aug_embeds = self.model(*self.preprocessor.prepare_input(pos_batch.x[mask], pos_batch.coords[mask], pos_batch.batch[mask]))
+        else:
+            pos_embeds = self.model(pos_batch.x, pos_batch.coords, pos_batch.batch)
+            neg_embeds = self.model(neg_batch.x, neg_batch.coords, neg_batch.batch)
+            aug_embeds = self.model(pos_batch.x[mask], pos_batch.coords[mask], pos_batch.batch[mask])
         
         pos_logits = self.decoder(pos_embeds.clone().detach())
         neg_logits = self.decoder(neg_embeds.clone().detach())

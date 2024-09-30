@@ -5,3 +5,5 @@ from .transformer import *
 from .transformer_qat import QTransformer, QAttn, QDecoder
 from .transformer_cluster import TransformerCluster
 from .model_gnn import GNNModel
+from .transformer_preprocessed import TranformerPreprocessed
+from .preprocessor import Preprocessor
