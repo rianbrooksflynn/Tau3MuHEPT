@@ -2,13 +2,14 @@ import torch
 
 
 class Preprocessor():
-    def __init__(self, num_regions, num_heads, n_hashes, block_size):
+    def __init__(self, num_regions, num_heads, n_hashes, block_size, device):
         self.num_regions = num_regions
         self.num_heads = num_heads
         self.n_hashes = n_hashes
         self.block_size = block_size
+        self.device = device
 
-        self.regions = self._get_regions()
+        self.regions = self._get_regions().to(self.device)
     
     def prepare_input(
             self,

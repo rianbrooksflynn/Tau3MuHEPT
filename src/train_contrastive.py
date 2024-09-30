@@ -37,7 +37,8 @@ class Tau3MuGNNs:
                 num_regions=config['model_kwargs']['num_regions'],
                 num_heads=config['model_kwargs']['num_heads'],
                 n_hashes=config['model_kwargs']['n_hashes'],
-                block_size=config['model_kwargs']['block_size']
+                block_size=config['model_kwargs']['block_size'],
+                device=self.device,
             )
 
         if self.qat:
