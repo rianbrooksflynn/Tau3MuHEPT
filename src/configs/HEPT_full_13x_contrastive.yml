@@ -6,7 +6,7 @@ num_threads: 32
 data: #Dataset-specific options. If these change, you must delete the previous processed files.
   data_dir: ../data
   log_dir: ../data/logs # Be careful to change this
-  signal_dataset: 'Tau3MuPU200_pcut1GeV_DF_2pCut2.5GeV_etaCut28_357574'
+  signal_dataset: 'Tau3MuPU200_pcut1GeV_DF_2pCut2.5GeV_etaCut28_357574.pkl'
   bkg_dataset: 'MinBiasPU200_reduced_DF.pkl'
   add_self_loops: True
   only_one_tau: True
